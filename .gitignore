@@ -35,9 +35,7 @@ venv.bak/
 out/
 devices/**/*.img
 devices/**/*.apk
-devices/**/*.zip
 *.log
-*.zip
 *.img
 *.bin
 tmp/
