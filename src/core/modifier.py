@@ -63,6 +63,7 @@ class SystemModifier:
         self._fix_vndk_apex()
         self._copy_stock_apex()
         self._fix_vintf_manifest()
+        self._debloat_system()
 
         self.logger.info("System Modification Completed.")
 
@@ -308,6 +309,46 @@ class SystemModifier:
             self.logger.info(f"Injected VNDK {vndk_version} into {target_xml.name} (Text Mode)")
         else:
             self.logger.error("Invalid manifest.xml: No </manifest> tag found.")
+
+    def _debloat_system(self):
+        """Debloat system by removing unnecessary apps to save space in super.img"""
+        self.logger.info("Starting Debloating...")
+        
+        debloat_apps = [
+            "MSA", "mab", "Updater", "MiuiUpdater", "MiService", "MIService", 
+            "SoterService", "Hybrid", "AnalyticsCore", "AiasstVision", 
+            "VoiceTrigger", "UPTsmService", "ConfigUpdater", "AIService", 
+            "CarWith", "MiBugReportOS3", "MINextpay", "MiGameService_GameAI_MTK", 
+            "MIUIAiasstService", "MIUISecurityInputMethod", "PaymentService", 
+            "GoogleServicesUpdater"
+        ]
+
+        # Partitions to search for debloat targets
+        partitions = ["product"]
+        
+        removed_count = 0
+        for partition in partitions:
+            partition_dir = self.ctx.target_dir / partition
+            if not partition_dir.exists():
+                continue
+                
+            # Search for apps in app, priv-app, and data-app
+            for app_root in [partition_dir / "app", partition_dir / "priv-app", partition_dir / "data-app"]:
+                if not app_root.exists():
+                    continue
+                    
+                for app_dir in app_root.iterdir():
+                    if not app_dir.is_dir():
+                        continue
+                        
+                    # Check if dirname contains any debloat keyword (case-insensitive)
+                    app_name_lower = app_dir.name.lower()
+                    if any(keyword.lower() in app_name_lower for keyword in debloat_apps):
+                        self.logger.info(f"Removing debloat target: {app_dir.relative_to(self.ctx.target_dir)}")
+                        shutil.rmtree(app_dir)
+                        removed_count += 1
+        
+        self.logger.info(f"Debloating completed. Removed {removed_count} directories.")
 
 class FrameworkModifier:
     def __init__(self, context):

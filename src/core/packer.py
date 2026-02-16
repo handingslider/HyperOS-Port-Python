@@ -332,7 +332,7 @@ class Repacker:
         self.logger.info("Compressing super.img to super.zst...")
         zst_path = self.ctx.target_dir / "super.zst"
         try:
-            self.shell.run(["zstd", "--rm", str(super_img), "-o", str(zst_path)])
+            self.shell.run(["zstd", str(super_img), "-o", str(zst_path)])
             self.logger.info("Compressed super.zst generated.")
         except Exception as e:
              self.logger.warning(f"zstd compression failed: {e}. Keeping super.img")
@@ -375,12 +375,9 @@ class Repacker:
             self.logger.info(f"Using root template from {root_template}")
             shutil.copytree(root_template, out_path, dirs_exist_ok=True)
         
-        # Ensure standard folders exist
+        # Ensure standard folders exist in case they are missing from template
         bin_dir = out_path / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
-        
-        scripts_dir = out_path / "scripts"
-        scripts_dir.mkdir(parents=True, exist_ok=True)
         
         images_dir = out_path / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
@@ -415,46 +412,35 @@ class Repacker:
         # 4. Copy tools and scripts
         flash_template = Path("bin/flash")
         
+        # 4. Process root scripts and update binary
+        # Process placeholders in all scripts found in the output directory
+        for script in out_path.glob("*"):
+            if script.is_file() and (script.suffix in [".sh", ".bat"]):
+                self.logger.info(f"Processing placeholders in root script: {script.name}")
+                self._process_script_placeholders(script)
+                if not self.ctx.is_ab_device:
+                    self._patch_script_for_a_only(script)
+                self._patch_script_for_firmware(script, images_dir)
+
+        # Handle update-binary in META-INF
+        update_binary = meta_inf / "update-binary"
+        flash_template = Path("bin/flash")
         if flash_template.exists():
-             # A. Flashing Tools
-             # Copy everything from flash_template/bin to out/bin
-             flash_bin = flash_template / "bin"
-             if flash_bin.exists():
-                 shutil.copytree(flash_bin, bin_dir, dirs_exist_ok=True)
+             src_ub = flash_template / "update-binary"
+             if src_ub.exists():
+                 shutil.copy2(src_ub, update_binary)
+                 self._process_script_placeholders(update_binary)
+                 if not self.ctx.is_ab_device:
+                     self._patch_update_binary_for_a_only(update_binary)
+                 self._patch_update_binary_firmware(update_binary, images_dir)
              
-             # B. Recovery Tools (zstd)
-             # The update-binary expects META-INF/zstd
+             # Recovery Tools (zstd)
              zstd_bin = flash_template / "zstd"
              if zstd_bin.exists():
                  shutil.copy2(zstd_bin, out_path / "META-INF/zstd")
-             
-             # C. Scripts & Update Binary
-             files_to_process = {
-                 "windows_flash_script.bat": scripts_dir / "windows_flash_script.bat",
-                 "mac_linux_flash_script.sh": scripts_dir / "mac_linux_flash_script.sh",
-                 "update-binary": meta_inf / "update-binary"
-             }
-             
-             # Create dummy updater-script (required by TWRP)
-             (meta_inf / "updater-script").write_text("# dummy\n", encoding='utf-8')
-
-             for src_name, dest_path in files_to_process.items():
-                 src_file = flash_template / src_name
-                 if src_file.exists():
-                     shutil.copy2(src_file, dest_path)
-                     self._process_script_placeholders(dest_path)
-                     
-                     # Specific handling for Fastboot scripts
-                     if "flash_script" in src_name:
-                         if not self.ctx.is_ab_device:
-                             self._patch_script_for_a_only(dest_path)
-                         self._patch_script_for_firmware(dest_path, images_dir)
-                     
-                     # Specific handling for Recovery script
-                     if src_name == "update-binary":
-                         if not self.ctx.is_ab_device:
-                             self._patch_update_binary_for_a_only(dest_path)
-                         self._patch_update_binary_firmware(dest_path, images_dir)
+        
+        # Create dummy updater-script (required by TWRP)
+        (meta_inf / "updater-script").write_text("# dummy\n", encoding='utf-8')
 
         # 5. Zip the package
         self.logger.info("Zipping hybrid package...")
