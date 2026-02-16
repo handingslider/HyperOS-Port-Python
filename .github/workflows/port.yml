@@ -1,0 +1,68 @@
+name: HyperOS Port Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      stock_url:
+        description: 'Stock ROM Download Link'
+        required: true
+      port_url:
+        description: 'Port ROM Download Link'
+        required: true
+      pack_type:
+        description: 'Output format (super/payload)'
+        required: true
+        default: 'payload'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zstd axel aria2
+          pip install -r requirements.txt || pip install requests glob2
+
+      - name: Prepare Binaries
+        run: |
+          chmod +x bin/linux/x86_64/*
+
+      - name: Download ROMs
+        run: |
+          mkdir -p downloads
+          echo "Downloading Stock ROM..."
+          axel -n 16 -o downloads/stock.zip "${{ github.event.inputs.stock_url }}"
+          echo "Downloading Port ROM..."
+          axel -n 16 -o downloads/port.zip "${{ github.event.inputs.port_url }}"
+
+      - name: Run Porting Tool
+        run: |
+          python3 main.py --stock downloads/stock.zip \
+                          --port downloads/port.zip \
+                          --pack-type "${{ github.event.inputs.pack_type }}" \
+                          --clean
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: HyperOS-Port-${{ github.run_id }}
+          path: |
+            build/target/*.img
+            build/target/*.zip
+            porting.log
+          compression-level: 9

@@ -32,8 +32,6 @@ class PropertyModifier:
         
         self._regenerate_fingerprint()
         
-        self._optimize_core_affinity()
-        
         self.logger.info("Build.prop modifications completed.")
 
     def _update_general_info(self):
@@ -143,9 +141,14 @@ class PropertyModifier:
                 break
         
         if not base_density:
-            base_density = "440"
+            if self.ctx.stock_rom_code == "duchamp":
+                base_density = "480"
+            else:
+                base_density = "440"
             self.logger.warning(f"Base density not found, defaulting to {base_density}")
         else:
+            if self.ctx.stock_rom_code == "duchamp":
+                base_density = "480"
             self.logger.info(f"Found Base density: {base_density}")
 
         # 2. Modify porting package
@@ -314,109 +317,3 @@ class PropertyModifier:
                 with open(prop_file, 'w', encoding='utf-8') as f:
                     f.writelines(new_lines)    
 
-    def _optimize_core_affinity(self):
-        """
-        Core allocation and scheduler optimization (supports sm8250, sm8450, sm8550 and Android version differences)
-        """
-        self.logger.info("Optimizing core affinity and scheduler...")
-        
-        product_prop = self.ctx.target_dir / "product/etc/build.prop"
-        if not product_prop.exists():
-            self.logger.warning("product/etc/build.prop not found, skipping core affinity optimization.")
-            return
-
-        # 1. Helper function: detect platform code
-        def get_platform_code():
-            vendor_prop = self.ctx.target_dir / "vendor/build.prop"
-            if vendor_prop.exists():
-                try:
-                    content = vendor_prop.read_text(encoding='utf-8', errors='ignore')
-                    if "sm8550" in content: return "sm8550"
-                    if "sm8450" in content: return "sm8450"
-                    if "sm8250" in content: return "sm8250"
-                except: pass
-            return "unknown"
-
-        # 2. Define property config dictionaries
-        
-        # === SM8550 (Snapdragon 8 Gen 2) ===
-        props_sm8550 = {
-            "persist.sys.miui_animator_sched.bigcores": "3-6",
-            "persist.sys.miui_animator_sched.sched_threads": "2",
-            "persist.sys.miui_animator_sched.big_prime_cores": "3-7",
-            "persist.vendor.display.miui.composer_boost": "4-7",
-            "persist.sys.brightmillet.enable": "true",
-            "persist.sys.millet.newversion": "true",
-            "ro.miui.affinity.sfre": "2-6",
-            "ro.miui.affinity.sfui": "2-6",
-            "ro.miui.affinity.sfuireset": "0-6",
-            "persist.sys.millet.handshake": "true"
-        }
-
-        # === SM8450 (Snapdragon 8 Gen 1) ===
-        props_sm8450 = {
-            "persist.sys.miui_animator_sched.bigcores": "4-7",
-            "persist.sys.miui_animator_sched.big_prime_cores": "4-7",
-            "persist.vendor.display.miui.composer_boost": "4-7",
-            "ro.miui.affinity.sfui": "4-7",
-            "ro.miui.affinity.sfre": "4-7",
-        }
-
-        # === SM8250 (Snapdragon 865) ===
-        props_sm8250 = {
-            "persist.sys.miui_animator_sched.bigcores": "4-7",
-            "persist.sys.miui_animator_sched.big_prime_cores": "4-7",
-            "ro.miui.affinity.sfui": "4-7",
-        }
-
-        # === Android 15 (Generic) ===
-        props_a15_generic = {
-            "ro.miui.affinity.sfui": "4-7",
-            "ro.miui.affinity.sfre": "4-7",
-            "ro.miui.affinity.sfuireset": "4-7",
-            "persist.sys.miui_animator_sched.bigcores": "4-7",
-            "persist.sys.miui_animator_sched.big_prime_cores": "4-7",
-            "persist.vendor.display.miui.composer_boost": "4-7",
-        }
-
-        # === Default / Android 14 (Generic) ===
-        props_default = {
-            "persist.sys.miui_animator_sched.bigcores": "4-6",
-            "persist.sys.miui_animator_sched.big_prime_cores": "4-7",
-            "persist.sys.miui.sf_cores": "4-7",
-            "persist.sys.minfree_def": "73728,92160,110592,154832,482560,579072",
-            "persist.sys.minfree_6g": "73728,92160,110592,258048,663552,903168",
-            "persist.sys.minfree_8g": "73728,92160,110592,387072,1105920,1451520",
-            "persist.vendor.display.miui.composer_boost": "4-7",
-        }
-
-        # 3. Get state
-        platform = get_platform_code()
-        android_ver = str(self.ctx.port_android_version)
-        
-        self.logger.info(f"Applying scheduling for Platform: [{platform}], Android: [{android_ver}]")
-
-        # 4. Match logic
-        target_props = {}
-        
-        match (platform, android_ver):
-            case ("sm8550", _):
-                target_props = props_sm8550
-            
-            case ("sm8450", _):
-                target_props = props_sm8450
-                
-            case ("sm8250", _):
-                target_props = props_sm8250
-
-            case ("unknown", "15"):
-                target_props = props_a15_generic
-            
-            case _:
-                target_props = props_default
-
-        # 5. Batch apply
-        if target_props:
-            self.logger.debug(f"Applying {len(target_props)} scheduling properties...")
-            for key, value in target_props.items():
-                self._update_or_append_prop(product_prop, key, value)

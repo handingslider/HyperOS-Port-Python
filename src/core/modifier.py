@@ -61,6 +61,7 @@ class SystemModifier:
         self._migrate_configs()
         self._replace_misound_and_biometric()
         self._fix_vndk_apex()
+        self._copy_stock_apex()
         self._fix_vintf_manifest()
 
         self.logger.info("System Modification Completed.")
@@ -87,6 +88,8 @@ class SystemModifier:
             "SettingsRroDeviceSystemUiOverlay.apk",
             "DevicesAndroidOverlay.apk",
             "DevicesOverlay.apk",
+            "DeviceAndroidOverlay.apk",
+            "DeviceOverlay.apk",
             "SettingsRroDeviceHideStatusBarOverlay.apk",
             "MiuiBiometricResOverlay.apk",
             "MiuiFrameworkTelephonyResOverlay.apk"
@@ -203,6 +206,31 @@ class SystemModifier:
             if not target_file.exists():
                 self.logger.info(f"Copying missing VNDK Apex: {apex_name}")
                 shutil.copy2(stock_apex, target_file)
+
+    def _copy_stock_apex(self):
+        """Copy specific APEX files from stock ROM to port (Requested for duchamp)"""
+        if self.ctx.stock_rom_code != "duchamp":
+            return
+
+        stock_apex_dir = self.ctx.stock.extracted_dir / "system_ext/apex"
+        target_apex_dir = self.ctx.target_dir / "system_ext/apex"
+        
+        if not stock_apex_dir.exists():
+            return
+            
+        target_apex_dir.mkdir(parents=True, exist_ok=True)
+        
+        # User requested v30, v31, v32, v33
+        apex_versions = ["v30", "v31", "v32", "v33"]
+        
+        for v in apex_versions:
+            # Look for *.apex or directories matching the version
+            for item in stock_apex_dir.glob(f"*{v}*"):
+                self.logger.info(f"Copying stock APEX: {item.name}")
+                if item.is_dir():
+                    shutil.copytree(item, target_apex_dir / item.name, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, target_apex_dir / item.name)
     
     def _apply_device_overrides(self):
         base_code = self.ctx.stock_rom_code
