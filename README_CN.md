@@ -1,5 +1,7 @@
 # HyperOS 移植工具 (Python 版)
 
+[English](README.md)
+
 这是一个基于 Python 的工具，用于将 HyperOS ROM 移植到各种设备。该工具自动化了移植所需的许多步骤，包括解包、修补、重新打包和签名。
 
 ## 功能特性

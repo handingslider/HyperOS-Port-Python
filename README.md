@@ -1,5 +1,7 @@
 # HyperOS Porting Tool (Python)
 
+[中文 (Chinese)](README_CN.md)
+
 A Python-based tool for porting HyperOS ROMs to various devices. This tool automates many of the steps required for porting, including unpacking, patching, repacking, and signing.
 
 ## Features
