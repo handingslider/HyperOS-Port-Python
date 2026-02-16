@@ -69,14 +69,22 @@
 
 1. 准备您的 Stock ROM（底包）和 Port ROM（移植包）（作为 zip 文件或目录）。
 2. 运行工具：
+
+   **默认模式 (OTA Recovery/Payload.bin):**
    ```bash
    sudo python3 main.py --stock <底包路径> --port <移植包路径>
+   ```
+
+   **Fastboot 模式 (Super Image):**
+   ```bash
+   sudo python3 main.py --stock <底包路径> --port <移植包路径> --pack-type super
    ```
 
 ### 参数
 
 - `--stock`：Stock ROM 的路径（设备的基础 ROM）。
 - `--port`：Port ROM 的路径（要移植的 HyperOS ROM）。
+- `--pack-type`：（可选）打包类型：`payload`（默认，适用于 Recovery/OTA）或 `super`（适用于 Fastboot/Super 镜像）。
 - `--ksu`：（可选）将 KernelSU 注入 init_boot。
 - `--work-dir`：（可选）工作目录（默认：`build`）。
 - `--clean`：（可选）开始前清理工作目录。
