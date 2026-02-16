@@ -90,6 +90,12 @@
 
 本项目大部分由 **Gemini Pro 3** 协助开发完成。
 
+特别感谢：
+1. https://github.com/ReChronoRain/HyperCeiler/
+2. https://github.com/Danda420/OemPorts10T-PIF
+3. https://github.com/FrameworksForge/FrameworkPatcher
+4. xiaomi.eu
+
 ## 许可证
 
-[MIT License](LICENSE) (或指定您的许可证)
+本项目基于 [Unlicense](LICENSE) 发布。完全免费，可以任意复制。
