@@ -65,9 +65,19 @@ class XmlUtils:
         if not public_xml.exists(): return None
 
         content = public_xml.read_text(encoding='utf-8', errors='ignore')
-        # Match <public ... name="name" id="0x..." />
-        match = re.search(f'name="{name}" id="(0x[0-9a-f]+)"', content)
-        return match.group(1) if match else None
+        
+        # Robust lookup handling arbitrary attribute order
+        # 1. Find the <public ... name="TARGET" ... > tag
+        # 2. Extract id="0x..." from that tag
+        pattern = re.compile(f'<public[^>]+name="{re.escape(name)}"[^>]*>', re.DOTALL)
+        match = pattern.search(content)
+        if match:
+            tag_text = match.group(0)
+            id_match = re.search(r'id="(0x[0-9a-fA-F]+)"', tag_text)
+            if id_match:
+                return id_match.group(1)
+                
+        return None
     
     def add_string(self, res_dir: Path, name: str, value: str, lang_suffix: str = ""):
         """
