@@ -69,14 +69,22 @@ A Python-based tool for porting HyperOS ROMs to various devices. This tool autom
 
 1. Prepare your Stock ROM and Port ROM (as zip files or directories).
 2. Run the tool:
+
+   **Default (OTA Recovery/Payload.bin):**
    ```bash
    sudo python3 main.py --stock <path_to_stock_rom> --port <path_to_port_rom>
+   ```
+
+   **Hybrid (Recovery/Fastboot):**
+   ```bash
+   sudo python3 main.py --stock <path_to_stock_rom> --port <path_to_port_rom> --pack-type super
    ```
 
 ### Arguments
 
 - `--stock`: Path to the Stock ROM (base ROM for the device).
 - `--port`: Path to the Port ROM (HyperOS ROM to port).
+- `--pack-type`: (Optional) Output format: `payload` (default, for Recovery/OTA) or `super` (for Hybrid Recovery/Fastboot).
 - `--ksu`: (Optional) Inject KernelSU into init_boot.
 - `--work-dir`: (Optional) Working directory (default: `build`).
 - `--clean`: (Optional) Clean working directory before starting.
