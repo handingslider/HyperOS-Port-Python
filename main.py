@@ -75,6 +75,10 @@ def main():
         logger.info(">>> Phase 1: Extraction")
         stock.extract_images() # Extract all from stock
         port.extract_images(port_partitions) # Extract specific from port
+        
+        # Cleanup original zips to free up disk space
+        stock.cleanup_source()
+        port.cleanup_source()
 
         # Execute Phase 2: Context Initialization
         logger.info(">>> Phase 2: Initialization")

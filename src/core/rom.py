@@ -434,6 +434,19 @@ class RomPackage:
             f.write("\n".join(content))
         
         self.logger.info(f"[{self.label}] Debug props saved.")
+
+    def cleanup_source(self):
+        """Delete original source file to free up space"""
+        if self.rom_type == RomType.LOCAL_DIR:
+             return
+             
+        if self.path.exists():
+            self.logger.info(f"[{self.label}] Cleaning up source ROM: {self.path.name}")
+            try:
+                os.remove(self.path)
+            except Exception as e:
+                self.logger.warning(f"Failed to delete {self.path}: {e}")
+
     def get_prop(self, key: str, default: str = None) -> str:
         """
         Get property value.
