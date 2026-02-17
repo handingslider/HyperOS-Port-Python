@@ -390,20 +390,30 @@ class Repacker:
         meta_inf = out_path / "META-INF/com/google/android"
         meta_inf.mkdir(parents=True, exist_ok=True)
 
-        # 2. Move super image and all component images
-        self.logger.info(f"Moving partition images to images/ (Aggressive Cleanup)...")
+        # 2. Move super image and handle component images
+        self.logger.info(f"Moving partition images to images/ (Eliminating redundancy)...")
         
         # Move super image
         final_super = super_image_path
-        if final_super.exists():
+        has_super = final_super.exists()
+        if has_super:
             shutil.move(final_super, images_dir / final_super.name)
 
-        # Move logical partition images (system, product, etc.)
+        # Logical partitions usually inside super
+        logical_parts = ["system", "vendor", "product", "system_ext", "odm", "mi_ext", "odm_dlkm", "vendor_dlkm", "system_dlkm", "product_dlkm", "cust"]
+
+        # Handle images in target_dir
         for img in self.ctx.target_dir.glob("*.img"):
             if img.name == "super.img": continue
-            # If it's already in final out via move, skip
             if not img.exists(): continue
-            shutil.move(img, images_dir / img.name)
+            
+            # If we have a super image, and this is a logical partition image, it is redundant
+            if has_super and any(part == img.stem for part in logical_parts):
+                self.logger.info(f"Aggressive Cleanup: Deleting redundant logical image {img.name} (contained in super)")
+                os.remove(img)
+            else:
+                # Keep non-logical partitions (boot, dtbo, vbmeta, etc.)
+                shutil.move(img, images_dir / img.name)
 
         # Move firmware images
         if self.ctx.repack_images_dir.exists():
