@@ -12,7 +12,15 @@ on:
       pack_type:
         description: 'Output format (super/payload)'
         required: true
-        default: 'payload'
+        default: 'super'
+      gms_phonesky_url:
+        description: 'Phonesky ZIP Download Link (Optional)'
+        required: false
+        default: 'https://pixeldrain.com/api/file/6izRe9gs'
+      gms_velvet_url:
+        description: 'Velvet ZIP Download Link (Optional)'
+        required: false
+        default: 'https://pixeldrain.com/api/file/HniGcyuV'
 
 jobs:
   build:
@@ -75,6 +83,4 @@ jobs:
           name: HyperOS-Port-${{ github.run_id }}
           path: |
             out/*_hybrid/
-            out/*.zip
-            porting.log
           compression-level: 9
