@@ -117,6 +117,11 @@ class Repacker:
         try:
             self.shell.run(cmd)
             self.logger.info(f"Successfully packed {part_name}.img (EROFS)")
+            
+            # Aggressive Cleanup: Delete source directory after packing
+            if src_dir.exists():
+                self.logger.info(f"Aggressive Cleanup: Removing raw folder {part_name}")
+                shutil.rmtree(src_dir)
         except Exception as e:
             self.logger.error(f"Failed to pack {part_name}: {e}")
 
@@ -385,29 +390,30 @@ class Repacker:
         meta_inf = out_path / "META-INF/com/google/android"
         meta_inf.mkdir(parents=True, exist_ok=True)
 
-        # 2. Copy super image and all component images
-        self.logger.info(f"Adding all partition images (~30 files) to images/ ...")
+        # 2. Move super image and all component images
+        self.logger.info(f"Moving partition images to images/ (Aggressive Cleanup)...")
         
-        # Copy super image
+        # Move super image
         final_super = super_image_path
         if final_super.exists():
-            shutil.copy2(final_super, images_dir / final_super.name)
-            # Ensure super.zst exists for update-binary
-            if final_super.name == "super.zst":
-                 pass
-            elif final_super.name == "super.img":
-                 # Hybrid might need super.zst, but if user wants super.img too...
-                 pass
+            shutil.move(final_super, images_dir / final_super.name)
 
-        # Copy logical partition images (system, product, etc.)
+        # Move logical partition images (system, product, etc.)
         for img in self.ctx.target_dir.glob("*.img"):
             if img.name == "super.img": continue
-            shutil.copy2(img, images_dir)
+            # If it's already in final out via move, skip
+            if not img.exists(): continue
+            shutil.move(img, images_dir / img.name)
 
-        # 3. Copy firmware images
+        # Move firmware images
         if self.ctx.repack_images_dir.exists():
             for fw in self.ctx.repack_images_dir.glob("*.img"):
-                 shutil.copy2(fw, images_dir)
+                 shutil.move(fw, images_dir / fw.name)
+            # Cleanup firmware dir
+            try:
+                shutil.rmtree(self.ctx.repack_images_dir)
+            except:
+                pass
                  
         # 4. Copy tools and scripts
         flash_template = Path("bin/flash")
