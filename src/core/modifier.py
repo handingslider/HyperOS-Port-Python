@@ -66,6 +66,9 @@ class SystemModifier:
         self._merge_mi_ext()
         self._fix_vintf_manifest()
         self._debloat_system()
+        self._data_app_migration()
+        self._install_custom_apps()
+        self._integrate_gms()
 
         self.logger.info("System Modification Completed.")
 
@@ -351,7 +354,10 @@ class SystemModifier:
             "VoiceTrigger", "UPTsmService", "ConfigUpdater", "AIService", 
             "CarWith", "MiBugReportOS3", "MINextpay", "MiGameService_GameAI_MTK", 
             "MIUIAiasstService", "MIUISecurityInputMethod", "PaymentService", 
-            "GoogleServicesUpdater"
+            "GoogleServicesUpdater", "BaiduIME", "iFlytekIME", "MIpay", 
+            "MIUIDuokanReader", "MIUIEmail", "MIUIHuanji", "MIUIMiDrive", 
+            "MIUINewHome_Removable", "MIUIVirtualSim", "OS2VipAccount", "wps-lite",
+            "Health"
         ]
 
         # Partitions to search for debloat targets
@@ -380,6 +386,128 @@ class SystemModifier:
                         removed_count += 1
         
         self.logger.info(f"Debloating completed. Removed {removed_count} directories.")
+
+    def _data_app_migration(self):
+        """Move remaining apps from product/data-app to product/app as requested"""
+        self.logger.info("Starting data-app migration to app...")
+        target_product = self.ctx.target_dir / "product"
+        data_app_root = target_product / "data-app"
+        app_root = target_product / "app"
+
+        if not data_app_root.exists():
+            self.logger.info("data-app directory not found, skipping migration.")
+            return
+
+        app_root.mkdir(parents=True, exist_ok=True)
+        
+        migrated_count = 0
+        for item in data_app_root.iterdir():
+            if item.is_dir():
+                target_path = app_root / item.name
+                self.logger.info(f"Migrating data-app: {item.name} -> product/app/")
+                shutil.copytree(item, target_path, dirs_exist_ok=True)
+                shutil.rmtree(item)
+                migrated_count += 1
+        
+        # Cleanup data-app folder if empty
+        try:
+            if not any(data_app_root.iterdir()):
+                shutil.rmtree(data_app_root)
+        except: pass
+
+        self.logger.info(f"Data-app migration completed. Migrated {migrated_count} items.")
+
+    def _install_custom_apps(self):
+        """Detect and install Gboard (LatinImeGoogle) and Via browser from project root or gapps/"""
+        self.logger.info("Checking for custom apps to install (LatinImeGoogle, Via)...")
+        custom_apps = ["LatinImeGoogle", "Via"]
+        target_app_dir = self.ctx.target_dir / "product/app"
+        gapps_dir = Path("gapps").resolve()
+        
+        installed_count = 0
+        for app_name in custom_apps:
+            # Check 1: Project Root
+            src_app = Path(app_name).resolve()
+            # Check 2: gapps/ directory
+            src_gapps_app = gapps_dir / app_name
+            
+            final_src = None
+            if src_app.exists() and src_app.is_dir():
+                final_src = src_app
+            elif src_gapps_app.exists() and src_gapps_app.is_dir():
+                final_src = src_gapps_app
+                
+            if final_src:
+                self.logger.info(f"Installing custom app: {app_name} from {final_src.parent.name} -> product/app/")
+                target_path = target_app_dir / app_name
+                target_path.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(final_src, target_path, dirs_exist_ok=True)
+                installed_count += 1
+            else:
+                self.logger.debug(f"Custom app folder '{app_name}' not found.")
+
+        self.logger.info(f"Custom app installation completed. Installed {installed_count} apps.")
+
+    def _integrate_gms(self):
+        """
+        Integrate GMS from ZIP packages in gapps/ directory.
+        Handles mapping of ___etc___permissions to etc/permissions, etc.
+        """
+        self.logger.info("Starting GMS integration from ZIPs...")
+        gapps_dir = Path("gapps").resolve()
+        target_product = self.ctx.target_dir / "product"
+        
+        if not gapps_dir.exists():
+            self.logger.info("gapps/ directory not found, skipping GMS integration.")
+            return
+
+        zip_files = list(gapps_dir.glob("*.zip"))
+        if not zip_files:
+            self.logger.info("No ZIP files found in gapps/, skipping.")
+            return
+
+        for gms_zip in zip_files:
+            self.logger.info(f"Processing GMS ZIP: {gms_zip.name}")
+            temp_extract = self.temp_dir / f"gms_{gms_zip.stem}"
+            if temp_extract.exists(): shutil.rmtree(temp_extract)
+            temp_extract.mkdir(parents=True, exist_ok=True)
+
+            with zipfile.ZipFile(gms_zip, 'r') as z:
+                z.extractall(temp_extract)
+
+            # Map the weird underscore paths to actual partition paths
+            # Structure: ___etc___permissions -> product/etc/permissions
+            for item in temp_extract.iterdir():
+                if item.name.startswith("___"):
+                    # Convert ___etc___permissions to etc/permissions
+                    clean_rel_path = item.name.replace("___", "/").strip("/")
+                    target_path = target_product / clean_rel_path
+                    
+                    if item.is_dir():
+                        self.logger.info(f"  Mapping: {item.name} -> product/{clean_rel_path}")
+                        target_path.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(item, target_path, dirs_exist_ok=True)
+                    else:
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(item, target_path)
+
+            # Search for ANY .prop files in the extracted content to merge
+            for prop_file in temp_extract.rglob("*.prop"):
+                self.logger.info(f"  Merging properties from: {prop_file.name}")
+                prop_target = target_product / "etc/build.prop"
+                if prop_target.exists():
+                    try:
+                        content = prop_file.read_text(encoding='utf-8', errors='ignore')
+                        with open(prop_target, "a", encoding='utf-8') as f:
+                            f.write(f"\n# GMS Extra Properties ({prop_file.name})\n")
+                            f.write(content + "\n")
+                    except Exception as e:
+                        self.logger.error(f"Failed to merge prop {prop_file.name}: {e}")
+
+            # Cleanup temp
+            shutil.rmtree(temp_extract)
+
+        self.logger.info("GMS integration completed.")
 
 class FrameworkModifier:
     def __init__(self, context):

@@ -18,6 +18,7 @@ class AppPatcher:
             "MIUIPackageInstaller.apk": "src.modules.installer.InstallerModule",
             "PowerKeeper.apk": "src.modules.powerkeeper.PowerKeeperModule",
             "MiuiGuardProvider.apk": "src.modules.guard.GuardModule",
+            "Provision.apk": "src.modules.provision.ProvisionModule",
         }
 
     def run(self):
