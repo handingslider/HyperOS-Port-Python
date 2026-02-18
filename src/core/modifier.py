@@ -91,8 +91,6 @@ class SystemModifier:
         overlay_list = [
             "AospFrameworkResOverlay.apk",
             "MiuiFrameworkResOverlay.apk",
-            "DeviceAndroidOverlay.apk",
-            "DeviceOverlay.apk",
             "DevicesAndroidOverlay.apk",
             "DevicesOverlay.apk",
         ]
@@ -364,7 +362,7 @@ class SystemModifier:
             "GoogleServicesUpdater", "BaiduIME", "iFlytekIME", "MIpay", 
             "MIUIDuokanReader", "MIUIEmail", "MIUIHuanji", "MIUIMiDrive", 
             "MIUINewHome_Removable", "MIUIVirtualSim", "OS2VipAccount", "wps-lite",
-            "Health"
+            "Health", "SogouIME", "VoiceAssistAndroidT", "VoiceAssistProxy"
         ]
 
         # Partitions to search for debloat targets
