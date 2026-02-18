@@ -16,11 +16,11 @@ on:
       gms_phonesky_url:
         description: 'Phonesky ZIP Download Link (Optional)'
         required: false
-        default: 'https://pixeldrain.com/api/file/6izRe9gs'
+        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/phonesky.zip'
       gms_velvet_url:
         description: 'Velvet ZIP Download Link (Optional)'
         required: false
-        default: 'https://pixeldrain.com/api/file/HniGcyuV'
+        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/velvet.zip'
 
 jobs:
   build:
