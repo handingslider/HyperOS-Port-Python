@@ -6,36 +6,40 @@ class ProvisionModule(BaseModule):
     def run(self, work_dir: Path):
         self.logger.info("Processing Provision.apk to enable GMS by default...")
         
-        # 1. Search for setGmsAppEnabledStateForCn method
-        target_file = None
-        for f in work_dir.rglob("*.smali"):
-            content = f.read_text(encoding='utf-8', errors='ignore')
-            if "setGmsAppEnabledStateForCn" in content:
-                target_file = f
-                break
-        
-        if not target_file:
-            self.logger.warning("setGmsAppEnabledStateForCn method not found in Provision.apk")
-            return
+        for matched_file in work_dir.rglob("*.smali"):
+            content = matched_file.read_text(encoding='utf-8', errors='ignore')
+            new_content = content
+            file_changed = False
+            
+            # --- 1. Handle setGmsAppEnabledStateForCn (Enablement Logic) ---
+            # In this method, IS_INTERNATIONAL_BUILD check is used to SKIP enablement.
+            # We want to force it to 0 (False) so the logic proceeds.
+            if "setGmsAppEnabledStateForCn" in new_content:
+                self.logger.info(f"  Patching setGmsAppEnabledStateForCn in {matched_file.name}")
+                # We target only the block of this method
+                method_pattern = r"(\.method.*?setGmsAppEnabledStateForCn\(.*?.end method)"
+                def patch_cn_gms(m):
+                    block = m.group(1)
+                    # Force register to 0 after sget-boolean
+                    pattern = r"(sget-boolean\s+([vp]\d+),\s+Lmiui/os/Build;->IS_INTERNATIONAL_BUILD:Z)"
+                    return re.sub(pattern, r"\1\n    const/4 \2, 0x0", block)
+                
+                new_content = re.sub(method_pattern, patch_cn_gms, new_content, flags=re.DOTALL)
+                file_changed = True
 
-        self.logger.info(f"Patching GMS enablement in {target_file.name}")
-        
-        # 2. Find IS_INTERNATIONAL_BUILD check and force it to true (const/4 vX, 0x1)
-        content = target_file.read_text(encoding='utf-8', errors='ignore')
-        
-        # Regex to find: sget-boolean vX, Lmiui/os/Build;->IS_INTERNATIONAL_BUILD:Z
-        # And inject const/4 vX, 0x1 immediately after
-        pattern = r"(sget-boolean\s+([vp]\d+),\s+Lmiui/os/Build;->IS_INTERNATIONAL_BUILD:Z)"
-        
-        def replace_func(match):
-            original_line = match.group(1)
-            register = match.group(2)
-            return f"{original_line}\n    const/4 {register}, 0x1"
+            # --- 2. Handle GMS support visibility (Settings Toggles) ---
+            # In these methods, we want to return true to show the toggle.
+            methods = ["isGmsCoreSupport", "isGmsCoreInstalled"]
+            for method in methods:
+                 if f"{method}()Z" in new_content:
+                    self.logger.info(f"  Forcing {method} to return true in {matched_file.name}")
+                    # Look for simple boolean getters and force return true
+                    simple_getter = rf"(\.method.*?{method}\(\)Z.*?)(return\s+([vp]\d+))(\s+\.end method)"
+                    # Note: Using \3 for register and \2 for original return line
+                    new_content = re.sub(simple_getter, r"\1const/4 \3, 0x1\n    \2\4", new_content, flags=re.DOTALL)
+                    file_changed = True
 
-        new_content = re.sub(pattern, replace_func, content)
-        
-        if new_content != content:
-            target_file.write_text(new_content, encoding='utf-8')
-            self.logger.info("Successfully patched Provision.apk for GMS enablement.")
-        else:
-            self.logger.warning("Could not find IS_INTERNATIONAL_BUILD check in target smali.")
+            if file_changed and new_content != content:
+                matched_file.write_text(new_content, encoding='utf-8')
+
+        self.logger.info("Provision.apk patch completed.")
