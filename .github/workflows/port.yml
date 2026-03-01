@@ -92,12 +92,12 @@ jobs:
             aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.gms_velvet_url }}"
           fi
           if [ -n "${{ github.event.inputs.latin_ime_url }}" ]; then
-            echo "Downloading LatinImeGoogle ZIP (as phonesky)..."
-            aria2c -x 16 -s 16 -d gapps -o phonesky.zip "${{ github.event.inputs.latin_ime_url }}"
+            echo "Downloading LatinImeGoogle ZIP..."
+            aria2c -x 16 -s 16 -d gapps -o LatinImeGoogle.zip "${{ github.event.inputs.latin_ime_url }}"
           fi
           if [ -n "${{ github.event.inputs.via_browser_url }}" ]; then
-            echo "Downloading Via Browser ZIP (as velvet)..."
-            aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.via_browser_url }}"
+            echo "Downloading Via Browser ZIP..."
+            aria2c -x 16 -s 16 -d gapps -o Via.zip "${{ github.event.inputs.via_browser_url }}"
           fi
 
       - name: Run Porting Tool

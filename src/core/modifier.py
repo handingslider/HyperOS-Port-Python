@@ -428,9 +428,9 @@ class SystemModifier:
         
         # Mapping: Source Name -> (Target Name, Target Partition/Subdir)
         app_mapping = {
-            "LatinImeGoogle": ("Phonesky", "product/priv-app"),
-            "Via": ("Velvet", "product/priv-app"),
-            "phonesky": ("Phonesky", "product/priv-app"), # Support renamed ZIPs from CI
+            "LatinImeGoogle": ("LatinImeGoogle", "product/app"),
+            "Via": ("Via", "product/app"),
+            "phonesky": ("Phonesky", "product/priv-app"),
             "velvet": ("Velvet", "product/priv-app")
         }
         
