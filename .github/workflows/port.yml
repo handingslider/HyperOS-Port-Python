@@ -91,10 +91,29 @@ jobs:
                           --pack-type "${{ github.event.inputs.pack_type }}" \
                           --clean
 
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: HyperOS-Port-${{ github.run_id }}
-          path: |
-            out/*_hybrid/
-          compression-level: 9
+      - name: Upload to Gofile
+        run: |
+         cd out/
+         TARGET_FOLDER=$(ls -d *_hybrid/ | head -n 1 | sed 's/\///')
+        
+            if [ -z "$TARGET_FOLDER" ]; then
+            echo " ERRO: Pasta *_hybrid não encontrada dentro de 'out/'"
+            ls -R 
+            exit 1
+            fi
+        
+           echo " Pasta identificada: $TARGET_FOLDER"
+
+          cd "$TARGET_FOLDER"
+          zip -r9 "../../$TARGET_FOLDER.zip" .
+          cd ../../
+          RESPONSE=$(curl -F "file=@$TARGET_FOLDER.zip" https://upload-eu-par.gofile.io/uploadFile)
+          DOWNLOAD_URL=$(echo $RESPONSE | jq -r '.data.downloadPage')
+          echo "------------------------------------------------------------"
+          echo "File: $TARGET_FOLDER.zip"
+          echo "Link: $DOWNLOAD_URL"
+          echo "------------------------------------------------------------"
+
+          echo "### NEW HYPER OS BUILD!(～￣▽￣)～" >> $GITHUB_STEP_SUMMARY
+          echo "- **File:** $TARGET_FOLDER.zip" >> $GITHUB_STEP_SUMMARY
+          echo "- **Download:** [$DOWNLOAD_URL]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
