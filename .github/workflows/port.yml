@@ -23,6 +23,14 @@ on:
         description: 'Velvet ZIP Download Link (Optional)'
         required: false
         default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/velvet.zip'
+      latin_ime_url:
+        description: 'LatinImeGoogle ZIP Download Link (Optional)'
+        required: false
+        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/LatinImeGoogle.zip'
+      via_browser_url:
+        description: 'Via Browser ZIP Download Link (Optional)'
+        required: false
+        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/Via.zip'
 
 jobs:
   build:
@@ -82,6 +90,14 @@ jobs:
           if [ -n "${{ github.event.inputs.gms_velvet_url }}" ]; then
             echo "Downloading Velvet ZIP..."
             aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.gms_velvet_url }}"
+          fi
+          if [ -n "${{ github.event.inputs.latin_ime_url }}" ]; then
+            echo "Downloading LatinImeGoogle ZIP (as phonesky)..."
+            aria2c -x 16 -s 16 -d gapps -o phonesky.zip "${{ github.event.inputs.latin_ime_url }}"
+          fi
+          if [ -n "${{ github.event.inputs.via_browser_url }}" ]; then
+            echo "Downloading Via Browser ZIP (as velvet)..."
+            aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.via_browser_url }}"
           fi
 
       - name: Run Porting Tool
