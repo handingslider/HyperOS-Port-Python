@@ -110,9 +110,8 @@
 
 特别感谢：
 1. https://github.com/ReChronoRain/HyperCeiler/
-2. https://github.com/Danda420/OemPorts10T-PIF
-3. https://github.com/FrameworksForge/FrameworkPatcher
-4. xiaomi.eu
+2. https://github.com/FrameworksForge/FrameworkPatcher
+3. xiaomi.eu
 
 ## 许可证
 
