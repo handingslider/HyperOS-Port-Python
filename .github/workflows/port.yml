@@ -76,29 +76,10 @@ jobs:
           VELVET_URL: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/velvet.zip'
         run: |
           mkdir -p gapps
-<<<<<<< HEAD
           echo "Downloading Phonesky ZIP..."
           aria2c -x 16 -s 16 -d gapps -o phonesky.zip "$PHONESKY_URL"
           echo "Downloading Velvet ZIP..."
           aria2c -x 16 -s 16 -d gapps -o velvet.zip "$VELVET_URL"
-=======
-          if [ -n "${{ github.event.inputs.gms_phonesky_url }}" ]; then
-            echo "Downloading Phonesky ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o phonesky.zip "${{ github.event.inputs.gms_phonesky_url }}"
-          fi
-          if [ -n "${{ github.event.inputs.gms_velvet_url }}" ]; then
-            echo "Downloading Velvet ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.gms_velvet_url }}"
-          fi
-          if [ -n "${{ github.event.inputs.latin_ime_url }}" ]; then
-            echo "Downloading LatinImeGoogle ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o LatinImeGoogle.zip "${{ github.event.inputs.latin_ime_url }}"
-          fi
-          if [ -n "${{ github.event.inputs.via_browser_url }}" ]; then
-            echo "Downloading Via Browser ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o Via.zip "${{ github.event.inputs.via_browser_url }}"
-          fi
->>>>>>> origin/testing
 
       - name: Run Porting Tool
         run: |
