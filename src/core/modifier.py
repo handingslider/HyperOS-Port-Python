@@ -3,7 +3,6 @@ import os
 import re
 import shutil
 import logging
-import concurrent.futures
 from pathlib import Path
 
 import tempfile
@@ -21,8 +20,6 @@ class SystemModifier:
         self.shell = ShellRunner()
         
         self.bin_dir = Path("bin").resolve()
-        self.apktool = self.bin_dir / "apktool.jar"
-        
         self.temp_dir = self.ctx.target_dir.parent / "temp"
 
     def run(self):
@@ -173,12 +170,6 @@ class SystemModifier:
 
         self.logger.info(f"Pangu relocation completed. Relocated {relocated_count} new files.")
         shutil.rmtree(pangu_dir)
-
-    def _apktool_decode(self, apk_path: Path, out_dir: Path):
-        self.shell.run_java_jar(self.apktool, ["d", str(apk_path), "-o", str(out_dir), "-f"])
-    
-    def _apktool_build(self, src_dir: Path, out_apk: Path):
-        self.shell.run_java_jar(self.apktool, ["b", str(src_dir), "-o", str(out_apk),"-f"])
 
     def _fix_vndk_apex(self):
         vndk_version = self.ctx.stock.get_prop("ro.vndk.version")
@@ -517,7 +508,7 @@ class SystemModifier:
 
         self.logger.info("GMS integration completed.")
 
-class FrameworkModifier:
+class _RemovedFrameworkModifier:
     def __init__(self, context):
         self.ctx = context
         self.logger = logging.getLogger("FrameworkModifier")
