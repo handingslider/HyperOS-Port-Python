@@ -15,14 +15,11 @@ on:
         description: 'Output format (super/payload)'
         required: true
         default: 'super'
-      gms_phonesky_url:
-        description: 'Phonesky ZIP Download Link (Optional)'
+      cn:
+        description: 'Add Phonesky and Velvet to CN ROM builds'
         required: false
-        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/phonesky.zip'
-      gms_velvet_url:
-        description: 'Velvet ZIP Download Link (Optional)'
-        required: false
-        default: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/velvet.zip'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -72,23 +69,24 @@ jobs:
           echo "Downloading Port ROM..."
           aria2c -x 16 -s 16 -d downloads -o port.zip "${{ github.event.inputs.port_url }}"
 
-      - name: Download GMS (Optional)
+      - name: Download CN GMS packages
+        if: ${{ inputs.cn }}
+        env:
+          PHONESKY_URL: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/phonesky.zip'
+          VELVET_URL: 'https://github.com/handingslider/HyperOS-Port-Python/releases/download/v1/velvet.zip'
         run: |
           mkdir -p gapps
-          if [ -n "${{ github.event.inputs.gms_phonesky_url }}" ]; then
-            echo "Downloading Phonesky ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o phonesky.zip "${{ github.event.inputs.gms_phonesky_url }}"
-          fi
-          if [ -n "${{ github.event.inputs.gms_velvet_url }}" ]; then
-            echo "Downloading Velvet ZIP..."
-            aria2c -x 16 -s 16 -d gapps -o velvet.zip "${{ github.event.inputs.gms_velvet_url }}"
-          fi
+          echo "Downloading Phonesky ZIP..."
+          aria2c -x 16 -s 16 -d gapps -o phonesky.zip "$PHONESKY_URL"
+          echo "Downloading Velvet ZIP..."
+          aria2c -x 16 -s 16 -d gapps -o velvet.zip "$VELVET_URL"
 
       - name: Run Porting Tool
         run: |
           python3 main.py --stock downloads/stock.zip \
                           --port downloads/port.zip \
                           --pack-type "${{ github.event.inputs.pack_type }}" \
+                          ${{ inputs.cn && '--cn' || '' }} \
                           --clean
 
       - name: Upload Results

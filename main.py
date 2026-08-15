@@ -4,9 +4,8 @@ import sys
 import shutil
 from pathlib import Path
 
-from src.core.apk_patcher import AppPatcher
 from src.core.props import PropertyModifier
-from src.core.modifier import FirmwareModifier, SystemModifier, FrameworkModifier, RomModifier
+from src.core.modifier import FirmwareModifier, SystemModifier, RomModifier
 from src.core.packer import Repacker
 from src.core.rom import RomPackage
 from src.core.context import PortingContext
@@ -33,6 +32,7 @@ def parse_args():
     parser.add_argument("--clean", action="store_true", help="Clean working directory before starting")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--pack-type", choices=["super", "payload"], default="payload", help="Output format: super (Super Image/Fastboot) or payload (OTA Payload/Recovery). Default: payload")
+    parser.add_argument("--cn", action="store_true", help="Add CN-only GMS packages (Phonesky and Velvet)")
     return parser.parse_args()
 
 def clean_work_dir(work_dir: Path):
@@ -84,6 +84,7 @@ def main():
         logger.info(">>> Phase 2: Initialization")
         ctx = PortingContext(stock, port, target_work_dir)
         ctx.enable_ksu = args.ksu
+        ctx.is_cn = args.cn
         ctx.initialize_target()
 
         logger.info(f"Detected Stock ROM Type: {stock.rom_type}")
@@ -107,18 +108,11 @@ def main():
         # Property modifications
         PropertyModifier(ctx).run()
         
-        # Framework modifications
-        framework_modifier = FrameworkModifier(ctx)
-        framework_modifier.run()
-        
         # Firmware modifications
         FirmwareModifier(ctx).run()
         
         # General ROM modifications
         RomModifier(ctx).run_all_modifications()
-        
-        # App patching
-        AppPatcher(ctx, framework_modifier).run()
 
         # Aggressive Cleanup Phase 2: Remove source extraction folders before repacking
         # to save space for large image creation (super.img)

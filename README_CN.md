@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-这是一个基于 Python 的工具，用于将 HyperOS ROM 移植到各种设备。该工具自动化了移植所需的许多步骤，包括解包、修补、重新打包和签名。
+这是一个基于 Python 的工具，用于将 HyperOS ROM 移植到各种设备。该工具自动化了移植所需的许多步骤，包括解包、ROM 集成、重新打包和签名。
 
 ## 支持机型
 
@@ -24,8 +24,7 @@
 ## 功能特性
 
 - **自动移植**：简化 HyperOS ROM 的移植流程。
-- **固件修改**：包含用于修改固件、系统、框架和 ROM 属性的模块。
-- **APK 修补**：根据需要修补系统 APK。
+- **ROM 集成**：修改固件、系统文件和 ROM 属性，不解码框架或应用字节码。
 - **重新打包**：将修改后的系统重新打包为可刷入的 ZIP 文件。
 - **签名**：为输出的 ZIP 文件签名以供安装。
 - **多设备支持**：可针对不同设备进行配置（参见 `devices/` 目录）。
@@ -93,8 +92,7 @@
 ## 目录结构
 
 - `src/`：工具的源代码。
-  - `core/`：核心逻辑（修补、重打包、ROM 处理）。
-  - `modules/`：针对系统不同部分的特定模块。
+  - `core/`：核心逻辑（ROM 集成、重打包、ROM 处理）。
   - `utils/`：实用脚本（Shell 执行、文件操作）。
 - `devices/`：特定设备的配置和覆盖文件。
 - `otatools/`：操作所需的 Android OTA 工具。
@@ -110,9 +108,7 @@
 
 特别感谢：
 1. https://github.com/ReChronoRain/HyperCeiler/
-2. https://github.com/Danda420/OemPorts10T-PIF
-3. https://github.com/FrameworksForge/FrameworkPatcher
-4. xiaomi.eu
+2. xiaomi.eu
 
 ## 许可证
 

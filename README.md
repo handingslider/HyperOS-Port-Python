@@ -4,7 +4,7 @@
 
 [中文 (Chinese)](README_CN.md)
 
-A Python-based tool for porting HyperOS ROMs to various devices. This tool automates many of the steps required for porting, including unpacking, patching, repacking, and signing.
+A Python-based tool for porting HyperOS ROMs to various devices. This tool automates many of the steps required for porting, including unpacking, ROM integration, repacking, and signing.
 
 ## Supported Devices
 
@@ -24,8 +24,7 @@ A Python-based tool for porting HyperOS ROMs to various devices. This tool autom
 ## Features
 
 - **Automated Porting**: Streamlines the process of porting HyperOS ROMs.
-- **Firmware Modification**: Includes modules for modifying firmware, system, framework, and ROM properties.
-- **APK Patching**: Patches system APKs as needed.
+- **ROM Integration**: Modifies firmware, system files, and ROM properties without decoding framework or app bytecode.
 - **Repacking**: Repacks the modified system into a flashable ZIP file.
 - **Signing**: Signs the output ZIP for installation.
 - **Multi-Device Support**: Configurable for different devices (see `devices/` directory).
@@ -93,8 +92,7 @@ A Python-based tool for porting HyperOS ROMs to various devices. This tool autom
 ## Directory Structure
 
 - `src/`: Source code for the tool.
-  - `core/`: Core logic (patching, repacking, ROM handling).
-  - `modules/`: Specific modules for different parts of the system.
+  - `core/`: Core logic (ROM integration, repacking, ROM handling).
   - `utils/`: Utility scripts (shell execution, file manipulation).
 - `devices/`: Device-specific configurations and overlays.
 - `otatools/`: Android OTA tools required for operation.
@@ -110,9 +108,7 @@ This project was largely developed with the assistance of **Gemini Pro 3**.
 
 Special thanks to:
 1. https://github.com/ReChronoRain/HyperCeiler/
-2. https://github.com/Danda420/OemPorts10T-PIF
-3. https://github.com/FrameworksForge/FrameworkPatcher
-4. xiaomi.eu
+2. xiaomi.eu
 
 ## License
 

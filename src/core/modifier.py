@@ -14,28 +14,6 @@ import urllib.request
 from urllib.error import URLError
 import subprocess
 
-from src.utils.smalikit import SmaliKit
-
-class SmaliArgs:
-    def __init__(self, **kwargs):
-        self.path = None
-        self.file_path = None
-        self.method = None
-        self.seek_keyword = None
-        self.iname = None
-        self.remake = None
-        self.replace_in_method = None
-        self.regex_replace = None
-        self.delete_in_method = None
-        self.delete_method = False
-        self.after_line = None
-        self.before_line = None
-        self.insert_line = None
-        self.recursive = False
-        self.return_type = None
-        
-        self.__dict__.update(kwargs)
-
 class SystemModifier:
     def __init__(self, context):
         self.ctx = context
@@ -68,7 +46,10 @@ class SystemModifier:
         self._debloat_system()
         self._data_app_migration()
         self._install_custom_apps()
-        self._integrate_gms()
+        if getattr(self.ctx, "is_cn", False):
+            self._integrate_gms()
+        else:
+            self.logger.info("CN flag is inactive, skipping GMS integration.")
 
         self.logger.info("System Modification Completed.")
 
@@ -99,24 +80,13 @@ class SystemModifier:
         stock_product = self.ctx.stock.extracted_dir / "product"
 
         self.logger.info(f"Checking for {len(overlay_list)} specific overlays...")
-        for apk_name in overlay_list:
-            # Case-insensitive rglob search for the APK name
-            # This handles both product/overlay/name.apk and product/overlay/name/name.apk
-            base_apk = None
-            try:
-                # Use a more robust search for the APK name
-                # This matches name.apk anywhere in the product tree
-                base_apk = next(stock_product.rglob(f"*/{apk_name}"), None)
-                if not base_apk:
-                     base_apk = next(stock_product.rglob(apk_name), None)
-            except: pass
+        wanted = set(overlay_list)
+        stock_overlays = {path.name: path for path in stock_product.rglob("*.apk") if path.name in wanted}
+        target_overlays = {path.name: path for path in target_product.rglob("*.apk") if path.name in wanted}
 
-            port_apk = None
-            try:
-                port_apk = next(target_product.rglob(f"*/{apk_name}"), None)
-                if not port_apk:
-                     port_apk = next(target_product.rglob(apk_name), None)
-            except: pass
+        for apk_name in overlay_list:
+            base_apk = stock_overlays.get(apk_name)
+            port_apk = target_overlays.get(apk_name)
 
             if base_apk and port_apk:
                 self.logger.info(f"  Replacing: {apk_name}")
@@ -410,8 +380,11 @@ class SystemModifier:
             if item.is_dir():
                 target_path = app_root / item.name
                 self.logger.info(f"Migrating data-app: {item.name} -> product/app/")
-                shutil.copytree(item, target_path, dirs_exist_ok=True)
-                shutil.rmtree(item)
+                if target_path.exists():
+                    shutil.copytree(item, target_path, dirs_exist_ok=True)
+                    shutil.rmtree(item)
+                else:
+                    shutil.move(str(item), str(target_path))
                 migrated_count += 1
         
         # Cleanup data-app folder if empty

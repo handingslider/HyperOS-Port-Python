@@ -12,8 +12,6 @@ class ContextPatcher:
         # Define fixed permissions for specific paths
         self.fix_permission = {
             "/vendor/bin/hw/android.hardware.wifi@1.0": ["u:object_r:hal_wifi_default_exec:s0"],
-            "/system/system/bin/pif-updater": ["u:object_r:pif_updater_exec:s0"],
-            "/vendor/app/PIF.apk": ["u:object_r:vendor_app_file:s0"],
             # Add more fixed permissions here if needed
         }
 
@@ -104,49 +102,14 @@ class ContextPatcher:
                 permission = permission_d
                 
                 if i:
-                    # 1. Check fixed permissions
                     if i in self.fix_permission:
                         permission = self.fix_permission[i]
                     else:
-                        # 2. Fuzzy match: Find closest parent directory in existing context
                         parent_path = os.path.dirname(i)
-                        
-                        matched = False
-                        # Optimization: Use keys iterator directly
-                        for e in fs_file.keys():
-                            # quick_ratio is faster for high volume comparisons
-                            if SequenceMatcher(None, parent_path, e).quick_ratio() >= 0.85:
-                                if e == parent_path: 
-                                    continue
-                                permission = fs_file[e]
-                                matched = True
+                        for e, candidate_permission in fs_file.items():
+                            if e != parent_path and SequenceMatcher(None, parent_path, e).quick_ratio() >= 0.85:
+                                permission = candidate_permission
                                 break
-                        
-                        if not matched:
-                            permission = permission_d
-
-                
-                if i:
-                    # 1. Check fixed permissions
-                    if i in self.fix_permission:
-                        permission = self.fix_permission[i]
-                    else:
-                        # 2. Fuzzy match: Find closest parent directory in existing context
-                        parent_path = os.path.dirname(i)
-                        
-                        matched = False
-                        # Optimization: Use keys iterator directly
-                        for e in fs_file.keys():
-                            # quick_ratio is faster for high volume comparisons
-                            if SequenceMatcher(None, parent_path, e).quick_ratio() >= 0.85:
-                                if e == parent_path: 
-                                    continue
-                                permission = fs_file[e]
-                                matched = True
-                                break
-                        
-                        if not matched:
-                            permission = permission_d
 
                 add_new += 1
                 r_new_fs[i] = permission
