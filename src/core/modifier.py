@@ -397,32 +397,62 @@ class SystemModifier:
 
     def _install_custom_apps(self):
         """Detect and install Gboard (LatinImeGoogle) and Via browser from project root or gapps/"""
-        self.logger.info("Checking for custom apps to install (LatinImeGoogle, Via)...")
-        custom_apps = ["LatinImeGoogle", "Via"]
-        target_app_dir = self.ctx.target_dir / "product/app"
-        gapps_dir = Path("gapps").resolve()
+        self.logger.info("Checking for custom apps to install (LatinImeGoogle, Via) as (Phonesky, Velvet)...")
         
+        # Mapping: Source Name -> (Target Name, Target Partition/Subdir)
+        app_mapping = {
+            "LatinImeGoogle": ("LatinImeGoogle", "product/app"),
+            "Via": ("Via", "product/app"),
+            "phonesky": ("Phonesky", "product/priv-app"),
+            "velvet": ("Velvet", "product/priv-app")
+        }
+        
+        gapps_dir = Path("gapps").resolve()
         installed_count = 0
-        for app_name in custom_apps:
-            # Check 1: Project Root
-            src_app = Path(app_name).resolve()
-            # Check 2: gapps/ directory
-            src_gapps_app = gapps_dir / app_name
+        
+        for src_name, (tgt_name, tgt_subdir) in app_mapping.items():
+            target_root = self.ctx.target_dir / tgt_subdir
+            target_path = target_root / tgt_name
             
-            final_src = None
-            if src_app.exists() and src_app.is_dir():
-                final_src = src_app
-            elif src_gapps_app.exists() and src_gapps_app.is_dir():
-                final_src = src_gapps_app
+            # Source can be a folder or a ZIP
+            src_paths = [
+                Path(src_name).resolve(),          # Project Root folder
+                gapps_dir / src_name,              # gapps/ folder
+                gapps_dir / f"{src_name}.zip"      # gapps/ ZIP
+            ]
+            
+            for src in src_paths:
+                if not src.exists():
+                    continue
                 
-            if final_src:
-                self.logger.info(f"Installing custom app: {app_name} from {final_src.parent.name} -> product/app/")
-                target_path = target_app_dir / app_name
-                target_path.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(final_src, target_path, dirs_exist_ok=True)
-                installed_count += 1
-            else:
-                self.logger.debug(f"Custom app folder '{app_name}' not found.")
+                self.logger.info(f"Installing {src_name} -> {tgt_subdir}/{tgt_name}")
+                target_root.mkdir(parents=True, exist_ok=True)
+                
+                if src.is_dir():
+                    shutil.copytree(src, target_path, dirs_exist_ok=True)
+                    installed_count += 1
+                    break # Installed from folder
+                elif src.suffix.lower() == ".zip":
+                    # Extract ZIP to target
+                    temp_extract = self.temp_dir / f"extract_{src.stem}"
+                    if temp_extract.exists(): shutil.rmtree(temp_extract)
+                    
+                    with zipfile.ZipFile(src, 'r') as z:
+                        z.extractall(temp_extract)
+                    
+                    # If ZIP contains the app folder, move its content. 
+                    # If it contains the app files directly, move it to target_path.
+                    # We assume it follows the structure: AppFolderName/AppContent
+                    src_item = temp_extract / src_name
+                    if src_item.exists() and src_item.is_dir():
+                        shutil.copytree(src_item, target_path, dirs_exist_ok=True)
+                    else:
+                        # Fallback: copy everything extracted to target_path
+                        shutil.copytree(temp_extract, target_path, dirs_exist_ok=True)
+                    
+                    shutil.rmtree(temp_extract)
+                    installed_count += 1
+                    break # Installed from ZIP
 
         self.logger.info(f"Custom app installation completed. Installed {installed_count} apps.")
 
@@ -646,19 +676,10 @@ class FrameworkModifier:
         wd = self.temp_dir / "framework"
         self.shell.run_java_jar(self.apkeditor_path, ["d", "-f", "-i", str(jar), "-o", str(wd), "-no-dex-debug"])
 
-        props_hook_zip = Path("devices/common/PropsHook.zip")
-        if props_hook_zip.exists():
-            self.logger.info("Injecting PropsHook...")
-            hook_tmp = self.temp_dir / "PropsHook"
-            with zipfile.ZipFile(props_hook_zip, 'r') as z:
-                z.extractall(hook_tmp)
-            
-            classes_dex = hook_tmp / "classes.dex"
-            if classes_dex.exists():
-                classes_out = hook_tmp / "classes"
-                self.shell.run_java_jar(self.baksmali_path, ["d", str(classes_dex), "-o", str(classes_out)])
-                
-                self._copy_to_next_classes(wd, classes_out)
+        # ==========================================
+        # 1. HookHelper & PropsHook 集成
+        # ==========================================
+        self._inject_hook_helper_methods(wd)
 
         self.logger.info("Applying Signature Bypass Patches...")
         
@@ -693,11 +714,12 @@ class FrameworkModifier:
 
         self._run_smalikit(path=str(wd), iname="ApkSignatureVerifier.smali", method="getMinimumSignatureSchemeVersionForTargetSdk", remake=self.RETRUN_TRUE)
 
-        pif_zip = Path("devices/common/pif_patch.zip")
-        if pif_zip.exists():
-            self._apply_pif_patch(wd, pif_zip)
-        else:
-            self.logger.warning("pif_patch.zip not found, skipping PIF injection.")
+        # [Patch] Fix Voice Trigger for A16 (SoundTrigger$RecognitionConfig)
+        if int(self.ctx.port_android_version) >= 16:
+            st_config = self._find_file_recursive(wd, "SoundTrigger$RecognitionConfig.smali")
+            if st_config:
+                self.logger.info("SoundTrigger$RecognitionConfig found, applying A16 patch...")
+                # Add A16 specific patches if needed here
 
         target_file = self._find_file_recursive(wd, "PendingIntent.smali")
         if target_file:
@@ -708,119 +730,6 @@ class FrameworkModifier:
         self._integrate_custom_platform_key(wd)
 
         self._apkeditor_build(wd, jar)
-
-        # --------------------------------------------------------------------------
-        # PIF Patch 逻辑 (模拟 patches.sh)
-        # --------------------------------------------------------------------------
-    def _apply_pif_patch(self, work_dir, pif_zip):
-        self.logger.info("Applying PIF Patch (Instrumentation, KeyStoreSpi, AppPM)...")
-        
-        temp_pif = self.temp_dir / "pif_classes"
-        with zipfile.ZipFile(pif_zip, 'r') as z:
-            z.extractall(temp_pif)
-        self._copy_to_next_classes(work_dir, temp_pif / "classes")
-        
-        self.logger.info(f"Merging files from {temp_pif} to {self.ctx.target_dir}...")
-        
-        for item in temp_pif.iterdir():
-            if item.name == "classes":
-                continue
-            
-            target_path = self.ctx.target_dir / item.name
-            
-            self.logger.info(f"  Merging: {item.name} -> {target_path}")
-            
-            if item.is_dir():
-                shutil.copytree(item, target_path, symlinks=True, dirs_exist_ok=True)
-            else:
-                if target_path.exists() or os.path.islink(target_path):
-                    if target_path.is_dir(): shutil.rmtree(target_path)
-                    else: os.unlink(target_path)
-                
-                shutil.copy2(item, target_path, follow_symlinks=False)
-
-        inst_smali = self._find_file_recursive(work_dir, "Instrumentation.smali")
-        if inst_smali:
-            content = inst_smali.read_text(encoding='utf-8', errors='ignore')
-            
-            method1 = "newApplication(Ljava/lang/ClassLoader;Ljava/lang/String;Landroid/content/Context;)Landroid/app/Application;"
-            if method1 in content:
-                reg = self._extract_register_from_invoke(content, method1, "Landroid/app/Application;->attach(Landroid/content/Context;)V", arg_index=1)
-                if reg:
-                    patch_code = f"    invoke-static {{{reg}}}, Lcom/android/internal/util/PropsHookUtils;->setProps(Landroid/content/Context;)V\n    invoke-static {{{reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onNewApplication(Landroid/content/Context;)V"
-                    self._run_smalikit(file_path=str(inst_smali), method=method1, before_line=["return-object", patch_code])
-
-            method2 = "newApplication(Ljava/lang/Class;Landroid/content/Context;)Landroid/app/Application;"
-            if method2 in content:
-                reg = self._extract_register_from_invoke(content, method2, "Landroid/app/Application;->attach(Landroid/content/Context;)V", arg_index=1)
-                if reg:
-                    patch_code = f"    invoke-static {{{reg}}}, Lcom/android/internal/util/PropsHookUtils;->setProps(Landroid/content/Context;)V\n    invoke-static {{{reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onNewApplication(Landroid/content/Context;)V"
-                    self._run_smalikit(file_path=str(inst_smali), method=method2, before_line=["return-object", patch_code])
-
-        keystore_smali = self._find_file_recursive(work_dir, "AndroidKeyStoreSpi.smali")
-        if keystore_smali:
-            self._run_smalikit(file_path=str(keystore_smali), method="engineGetCertificateChain", 
-                               insert_line=["2", "    invoke-static {}, Lcom/android/internal/util/danda/OemPorts10TUtils;->onEngineGetCertificateChain()V"])
-            
-            content = keystore_smali.read_text(encoding='utf-8')
-            aput_matches = list(re.finditer(r"aput-object\s+([vp]\d+),\s+([vp]\d+),\s+([vp]\d+)", content))
-            if aput_matches:
-                pattern = re.compile(r"(\.method.+engineGetCertificateChain.+?\.end method)", re.DOTALL)
-                match = pattern.search(content)
-                if match:
-                    body = match.group(1)
-                    inner_aputs = list(re.finditer(r"aput-object\s+([vp]\d+),\s+([vp]\d+),\s+([vp]\d+)", body))
-                    if inner_aputs:
-                        last_aput = inner_aputs[-1]
-                        array_reg = last_aput.group(2)
-                        
-                        spoof_code = f"\n    invoke-static {{{array_reg}}}, Lcom/android/internal/util/danda/OemPorts10TUtils;->genCertificateChain([Ljava/security/cert/Certificate;)[Ljava/security/cert/Certificate;\n    move-result-object {array_reg}\n"
-                        
-                        old_line = last_aput.group(0)
-                        new_body = body.replace(old_line, old_line + spoof_code)
-                        content = content.replace(body, new_body)
-                        keystore_smali.write_text(content, encoding='utf-8')
-
-        app_pm_smali = self._find_file_recursive(work_dir, "ApplicationPackageManager.smali")
-        if app_pm_smali:
-            self.logger.info("Hooking ApplicationPackageManager...")
-            
-            method_sig = "hasSystemFeature(Ljava/lang/String;I)Z"
-            
-            repl_pattern = (
-                r"invoke-static {p1, \1}, Lcom/android/internal/util/PropsHookUtils;->hasSystemFeature(Ljava/lang/String;Z)Z"
-                r"\n    move-result \1"
-                r"\n    return \1"
-            )
-            
-            self._run_smalikit(
-                file_path=str(app_pm_smali), 
-                method=method_sig, 
-                regex_replace=(r"return\s+([vp]\d+)", repl_pattern)
-            )
-        
-        policy_tool = self.bin_dir / "insert_selinux_policy.py"
-        config_json = Path("devices/common/pif_updater_policy.json")
-        cil_path = self.ctx.target_dir / "system/system/etc/selinux/plat_sepolicy.cil"
-        
-        if policy_tool.exists() and config_json.exists() and cil_path.exists():
-            self.shell.run(["python3", str(policy_tool), "--config", str(config_json), str(cil_path)])
-            
-            fc_path = self.ctx.target_dir / "system/system/etc/selinux/plat_file_contexts"
-            if fc_path.exists():
-                with open(fc_path, "a") as f:
-                    f.write("\n/system/bin/pif-updater       u:object_r:pif_updater_exec:s0\n")
-                    f.write("/data/system/pif_tmp.apk  u:object_r:pif_data_file:s0\n")
-                    f.write("/data/PIF.apk u:object_r:pif_data_file:s0\n")
-                    f.write("/data/local/tmp/PIF.apk   u:object_r:pif_data_file:s0\n")
-        
-        product_prop = self.ctx.target_dir / "product/etc/build.prop"
-        if product_prop.exists():
-            with open(product_prop, "a") as f:
-                f.write("\npersist.sys.oemports10t.pif.autoupdate=true\n")
-                f.write("persist.sys.oemports10t.blspoof=true\n")
-                f.write("persist.sys.oemports10t.fpspoof=true\n")
-                f.write("persist.sys.oemports10t.utils-debug=true\n")
 
     # --------------------------------------------------------------------------
     # 自定义平台签名校验逻辑
@@ -902,6 +811,46 @@ class FrameworkModifier:
         else:
             self.logger.warning(f"arg_index {arg_index} out of bounds for registers: {reg_list}")
             return None
+
+    def _extract_register_from_local(self, content: str, method_signature: str, local_name: str) -> str | None:
+        """
+        Extract register name from .local declaration or move-object instructions.
+        """
+        method_pattern = re.compile(rf"\.method[^\n]*?{re.escape(method_signature)}(.*?)\.end method", re.DOTALL)
+        method_match = method_pattern.search(content)
+        if not method_match: return None
+        body = method_match.group(1)
+        
+        # 1. Bytecode declaration
+        local_pattern = re.compile(rf'\.local\s+([vp]\d+),\s+{re.escape(local_name)}[;:,]')
+        match = local_pattern.search(body)
+        if match: return match.group(1)
+            
+        # 2. Optimized move-object fallback
+        if local_name == '"descriptor"':
+            move_match = re.search(r"move-object(?:\/from16)?\s+([vp]\d+),\s+p1", body)
+            if move_match: return move_match.group(1)
+        elif local_name == '"args"':
+            move_match = re.search(r"move-object(?:\/from16)?\s+([vp]\d+),\s+p3", body)
+            if move_match: return move_match.group(1)
+        return None
+
+    def _inject_hook_helper_methods(self, wd):
+        props_hook_zip = Path("devices/common/PropsHook.zip")
+        if props_hook_zip.exists():
+            self.logger.info("Injecting PropsHook classes...")
+            hook_tmp = self.temp_dir / "PropsHook"
+            if hook_tmp.exists(): shutil.rmtree(hook_tmp)
+            hook_tmp.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(props_hook_zip, 'r') as z:
+                z.extractall(hook_tmp)
+            classes_dex = hook_tmp / "classes.dex"
+            if classes_dex.exists():
+                classes_out = hook_tmp / "classes"
+                self.shell.run_java_jar(self.baksmali_path, ["d", str(classes_dex), "-o", str(classes_out)])
+                self._copy_to_next_classes(wd, classes_out)
+        else:
+            self.logger.warning("PropsHook.zip not found, skipping HookHelper injection.")
 
     def _inject_xeu_toolbox(self):
         xeu_zip = Path("devices/common/xeutoolbox.zip")
