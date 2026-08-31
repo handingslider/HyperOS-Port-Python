@@ -330,7 +330,7 @@ class PropertyModifier:
 
         # Write to all build.prop files
         replacements = {
-            "ro.build.fingerprint=": f"ro.build.fingerprint={new_fingerprint}",
+            "ro.build.fingerprint=": f"ro.build.fingerprint=POCO/duchamp_global/duchamp:16/BP2A.250605.031.A3/OS3.0.6.0.WNLMIXM:user/release-keys",
             "ro.bootimage.build.fingerprint=": f"ro.bootimage.build.fingerprint={new_fingerprint}",
             "ro.system.build.fingerprint=": f"ro.system.build.fingerprint={new_fingerprint}",
             "ro.product.build.fingerprint=": f"ro.product.build.fingerprint={new_fingerprint}",
