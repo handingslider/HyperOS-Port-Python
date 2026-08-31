@@ -317,11 +317,11 @@ class SystemModifier:
         debloat_apps = [
             "MSA", "mab", "Updater", "MiuiUpdater", "MiService", "MIService", 
             "SoterService", "Hybrid", "AnalyticsCore", "AiasstVision", 
-            "VoiceTrigger", "UPTsmService", "ConfigUpdater", "AIService", 
+            "VoiceTrigger", "UPTsmService", "ConfigUpdater", 
             "CarWith", "MiBugReportOS3", "MINextpay", "MiGameService_GameAI_MTK", 
             "MIUIAiasstService", "MIUISecurityInputMethod", "PaymentService", 
             "GoogleServicesUpdater", "BaiduIME", "iFlytekIME", "MIpay", 
-            "MIUIDuokanReader", "MIUIEmail", "MIUIHuanji", "MIUIMiDrive", 
+            "MIUIDuokanReader", "MIUIEmail", "MIUIHuanji", 
             "MIUINewHome_Removable", "MIUIVirtualSim", "OS2VipAccount", "wps-lite",
             "Health", "SogouIME", "VoiceAssistAndroidT", "VoiceAssistProxy"
         ]
