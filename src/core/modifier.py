@@ -40,6 +40,8 @@ class SystemModifier:
         self._copy_stock_apex()
         self._merge_mi_ext()
         self._fix_vintf_manifest()
+        if self.android_version == 17:
+            self._fix_hyperos17_vibrator()
         self._debloat_system()
         self._data_app_migration()
         self._install_custom_apps()
@@ -310,6 +312,144 @@ class SystemModifier:
         else:
             self.logger.error("Invalid manifest.xml: No </manifest> tag found.")
 
+    def _fix_hyperos17_vibrator(self):
+        """
+        HyperOS 3 (Android 17) renamed the vibrator HAL AIDL instance from
+        'vibratorfeature' to 'default'. Vendor/odm blobs pulled in from stock
+        firmware older than Android 17 still register under 'vibratorfeature',
+        so once they're combined with an Android 17 port the framework can't
+        find the vibrator and vibration silently stops working.
+
+        Only runs when the port ROM is Android 17, since older ports already
+        match the vendor/odm naming and don't need this.
+
+        Fix credit: @xendr4x (t.me/xendr4x).
+        """
+        self.logger.info("Android 17 port detected, checking vibrator HAL naming (vibratorfeature -> default)...")
+
+        odm_dir = self.ctx.target_dir / "odm"
+        if not odm_dir.exists():
+            self.logger.info("odm partition not present in target, skipping vibrator HAL fix.")
+            return
+
+        self._patch_vibrator_vintf_manifest(odm_dir)
+        self._patch_vibrator_hal_binary(odm_dir)
+        self._patch_vibrator_manager_service_stub()
+
+    def _patch_vibrator_vintf_manifest(self, odm_dir: Path):
+        """Repoint the VINTF manifest fragment's IVibrator fqname at 'default'."""
+        manifest_xml = self._find_file_recursive(odm_dir, "vendor.xiaomi.hardware.vibratorfeature.service.xml")
+        if not manifest_xml:
+            self.logger.info("vibratorfeature VINTF manifest fragment not found, skipping VINTF fix.")
+            return
+
+        content = manifest_xml.read_text(encoding='utf-8', errors='ignore')
+        if "/vibratorfeature" not in content:
+            self.logger.info(f"{manifest_xml.name} does not reference /vibratorfeature, skipping.")
+            return
+
+        new_content = content.replace("/vibratorfeature", "/default")
+        manifest_xml.write_text(new_content, encoding='utf-8')
+        self.logger.info(f"Patched VINTF manifest: {manifest_xml.relative_to(self.ctx.target_dir)}")
+
+    def _patch_vibrator_hal_binary(self, odm_dir: Path):
+        """Patch the embedded instance-name string inside the vibrator HAL service binary."""
+        hal_bin = odm_dir / "bin" / "hw" / "vendor.xiaomi.hardware.vibratorfeature.service"
+        if not hal_bin.exists():
+            hal_bin = self._find_file_recursive(odm_dir, "vendor.xiaomi.hardware.vibratorfeature.service")
+
+        if not hal_bin or not hal_bin.exists():
+            self.logger.info("vibratorfeature HAL service binary not found, skipping binary patch.")
+            return
+
+        data = bytearray(hal_bin.read_bytes())
+        old = b"/vibratorfeature\x00"
+        count = data.count(old)
+
+        if count != 1:
+            self.logger.warning(
+                f"Expected exactly one '/vibratorfeature' string in {hal_bin.name}, found {count}. "
+                "Skipping binary patch to avoid corrupting the file."
+            )
+            return
+
+        replacement = b"/default\x00"
+        new = replacement + b"\x00" * (len(old) - len(replacement))
+        data = data.replace(old, new)
+        hal_bin.write_bytes(data)
+        self.logger.info(f"Patched vibrator HAL binary: {hal_bin.relative_to(self.ctx.target_dir)}")
+
+    def _patch_vibrator_manager_service_stub(self):
+        """
+        On some devices services.jar only ships the MiuiStubUtil-backed
+        VibratorManagerServiceStub, and MiuiStubUtil can't resolve the real
+        implementation on a ported ROM, which hangs system_server on the boot
+        animation. Repoint VibratorManagerServiceStub$Holder at a directly
+        constructed instance instead of going through MiuiStubUtil.getImpl().
+
+        This is skipped automatically (leaving services.jar untouched) if
+        services.jar or APKEditor aren't found, or if the expected stub
+        pattern isn't present, since not every device needs it.
+        """
+        jar_path = self._find_file_recursive(self.ctx.target_dir, "services.jar")
+        if not jar_path:
+            self.logger.info("services.jar not found, skipping VibratorManagerServiceStub patch.")
+            return
+
+        apkeditor_path = self.bin_dir / "APKEditor.jar"
+        if not apkeditor_path.exists():
+            self.logger.warning("APKEditor.jar not found, skipping VibratorManagerServiceStub patch.")
+            return
+
+        work_dir = self.temp_dir / "services_vibrator_stub"
+        if work_dir.exists():
+            shutil.rmtree(work_dir)
+
+        try:
+            shutil.copy2(jar_path, self.temp_dir / "services.jar.bak")
+            self.shell.run_java_jar(apkeditor_path, ["d", "-f", "-i", str(jar_path), "-o", str(work_dir)])
+
+            holder_smali = self._find_file_recursive(work_dir, "VibratorManagerServiceStub$Holder.smali")
+            if not holder_smali:
+                self.logger.info("VibratorManagerServiceStub$Holder.smali not found, skipping stub patch.")
+                return
+
+            content = holder_smali.read_text(encoding='utf-8', errors='ignore')
+
+            pattern = re.compile(
+                r"const-class\s+(v\d+),\s*Lcom/android/server/vibrator/VibratorManagerServiceStub;\s*\n"
+                r"\s*invoke-static\s*\{\s*\1\s*\},\s*Lcom/miui/base/MiuiStubUtil;->getImpl\(Ljava/lang/Class;\)Ljava/lang/Object;\s*\n"
+                r"\s*move-result-object\s+\1\s*\n"
+                r"\s*check-cast\s+\1,\s*Lcom/android/server/vibrator/VibratorManagerServiceStub;"
+            )
+
+            match = pattern.search(content)
+            if not match:
+                self.logger.info(
+                    "services.jar does not match the expected MiuiStubUtil.getImpl() stub pattern "
+                    "(already fixed or a different build), skipping stub patch."
+                )
+                return
+
+            reg = match.group(1)
+            replacement = (
+                f"new-instance {reg}, Lcom/android/server/vibrator/VibratorManagerServiceStub;\n"
+                f"    invoke-direct {{{reg}}}, Lcom/android/server/vibrator/VibratorManagerServiceStub;-><init>()V\n"
+                f"    sput-object {reg}, Lcom/android/server/vibrator/VibratorManagerServiceStub$Holder;->instance:"
+                f"Lcom/android/server/vibrator/VibratorManagerServiceStub;"
+            )
+
+            new_content = content[:match.start()] + replacement + content[match.end():]
+            holder_smali.write_text(new_content, encoding='utf-8')
+
+            self.shell.run_java_jar(apkeditor_path, ["b", "-f", "-i", str(work_dir), "-o", str(jar_path)])
+            self.logger.info("Patched VibratorManagerServiceStub$Holder to bypass MiuiStubUtil.getImpl().")
+        except Exception as e:
+            self.logger.error(f"Failed to patch VibratorManagerServiceStub, services.jar left untouched: {e}")
+        finally:
+            if work_dir.exists():
+                shutil.rmtree(work_dir, ignore_errors=True)
+
     def _debloat_system(self):
         """Debloat system by removing unnecessary apps to save space in super.img"""
         self.logger.info("Starting Debloating...")
@@ -430,22 +570,63 @@ class SystemModifier:
                     
                     with zipfile.ZipFile(src, 'r') as z:
                         z.extractall(temp_extract)
-                    
-                    # If ZIP contains the app folder, move its content. 
-                    # If it contains the app files directly, move it to target_path.
-                    # We assume it follows the structure: AppFolderName/AppContent
-                    src_item = temp_extract / src_name
-                    if src_item.exists() and src_item.is_dir():
-                        shutil.copytree(src_item, target_path, dirs_exist_ok=True)
+
+                    # Phonesky/Velvet ship as flashable addon zips (NikGapps-style)
+                    # where '/' is encoded as '___' in the path, e.g.
+                    # '___priv-app___Phonesky/Phonesky.apk' == 'product/priv-app/Phonesky/Phonesky.apk',
+                    # alongside installer.sh/uninstaller.sh helper scripts that aren't
+                    # part of the ROM at all. Detect and install that layout correctly
+                    # first, since it doesn't match the plain AppFolderName/AppContent
+                    # layout below and would otherwise get dumped into target_path as-is
+                    # (installer scripts included, apk nested one folder too deep).
+                    product_root = self.ctx.target_dir / "product"
+                    encoded_count = self._extract_encoded_addon_zip(temp_extract, product_root)
+
+                    if encoded_count > 0:
+                        self.logger.info(f"Installed {src_name} from encoded addon zip ({encoded_count} file(s)) -> product/")
                     else:
-                        # Fallback: copy everything extracted to target_path
-                        shutil.copytree(temp_extract, target_path, dirs_exist_ok=True)
+                        # If ZIP contains the app folder, move its content.
+                        # If it contains the app files directly, move it to target_path.
+                        # We assume it follows the structure: AppFolderName/AppContent
+                        src_item = temp_extract / src_name
+                        if src_item.exists() and src_item.is_dir():
+                            shutil.copytree(src_item, target_path, dirs_exist_ok=True)
+                        else:
+                            # Fallback: copy everything extracted to target_path
+                            shutil.copytree(temp_extract, target_path, dirs_exist_ok=True)
                     
                     shutil.rmtree(temp_extract)
                     installed_count += 1
                     break # Installed from ZIP
 
         self.logger.info(f"Custom app installation completed. Installed {installed_count} apps.")
+
+    def _extract_encoded_addon_zip(self, temp_extract: Path, product_root: Path) -> int:
+        """
+        Install files from a NikGapps-style flashable addon zip, where the first
+        path component encodes '/' as '___' (e.g. '___priv-app___Phonesky/Phonesky.apk'
+        -> 'product/priv-app/Phonesky/Phonesky.apk', '___etc___permissions/x.xml' ->
+        'product/etc/permissions/x.xml'). Files without '___' in their path (installer.sh,
+        uninstaller.sh, and similar flashing scripts) are not part of the ROM and are skipped.
+
+        Returns the number of files installed this way (0 if the zip doesn't use this layout).
+        """
+        installed = 0
+        for item in temp_extract.rglob("*"):
+            if not item.is_file():
+                continue
+
+            rel_posix = item.relative_to(temp_extract).as_posix()
+            if "___" not in rel_posix:
+                continue  # e.g. installer.sh / uninstaller.sh, not part of the encoded layout
+
+            decoded_rel = rel_posix.replace("___", "/").lstrip("/")
+            dest = product_root / decoded_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, dest)
+            installed += 1
+
+        return installed
 
     def _integrate_gms(self):
         """
